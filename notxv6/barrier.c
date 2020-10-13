@@ -31,6 +31,22 @@ barrier()
   // then increment bstate.round.
   //
   
+  pthread_mutex_lock(&bstate.barrier_mutex);
+  bstate.nthread++;
+  //如果当前的线程都达到了屏障点，进行所有线程的唤醒,屏障次数++
+  if(bstate.nthread==nthread)
+  {
+    bstate.round++;
+    bstate.nthread=0;
+    pthread_cond_broadcast(&bstate.barrier_cond);
+  }
+  //否则等待
+  else
+  {
+    pthread_cond_wait(&bstate.barrier_cond,&bstate.barrier_mutex);
+  }
+
+  pthread_mutex_unlock(&bstate.barrier_mutex);
 }
 
 static void *
@@ -46,6 +62,8 @@ thread(void *xa)
     barrier();
     usleep(random() % 100);
   }
+
+  return 0;
 }
 
 int

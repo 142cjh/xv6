@@ -8,6 +8,9 @@
 #define NBUCKET 5
 #define NKEYS 100000
 
+//定义锁，对应哈希表中每一个bucket一个锁
+pthread_mutex_t lock[NBUCKET];
+
 struct entry {
   int key;
   int value;
@@ -35,6 +38,7 @@ insert(int key, int value, struct entry **p, struct entry *n)
   *p = e;
 }
 
+
 static 
 void put(int key, int value)
 {
@@ -42,6 +46,8 @@ void put(int key, int value)
 
   // is the key already present?
   struct entry *e = 0;
+  //获取锁
+  pthread_mutex_lock(&lock[i]);
   for (e = table[i]; e != 0; e = e->next) {
     if (e->key == key)
       break;
@@ -53,6 +59,8 @@ void put(int key, int value)
     // the new is new.
     insert(key, value, &table[i], table[i]);
   }
+  //释放锁
+  pthread_mutex_unlock(&lock[i]);
 }
 
 static struct entry*
@@ -102,6 +110,12 @@ main(int argc, char *argv[])
   pthread_t *tha;
   void *value;
   double t1, t0;
+
+  //初始化哈希表中所有bucket的锁
+  for(int i=0;i<NBUCKET;i++)
+  {
+    pthread_mutex_init(&lock[i],NULL);
+  }
 
   if (argc < 2) {
     fprintf(stderr, "Usage: %s nthreads\n", argv[0]);
