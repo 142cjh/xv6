@@ -65,7 +65,12 @@ usertrap(void)
     intr_on();
 
     syscall();
-  } else if((which_dev = devintr()) != 0){
+  }else if(r_scause() == 13 || r_scause() == 15) {
+    uint64 va = r_stval();
+    if(handleCOWfault(p->pagetable, va) == -1)
+      p->killed = 1;
+  }
+   else if((which_dev = devintr()) != 0){
     // ok
   } else {
     printf("usertrap(): unexpected scause %p pid=%d\n", r_scause(), p->pid);
@@ -81,6 +86,43 @@ usertrap(void)
     yield();
 
   usertrapret();
+}
+
+int handleCOWfault(pagetable_t pagetable, uint64 va) 
+{
+  // 1.判断 va 合法性
+  if(va > MAXVA) 
+    return -1;
+  pte_t *pte = walk(pagetable, va, 0);
+  if(pte == 0 || (*pte & (PTE_V)) == 0 || (*pte & PTE_U) == 0) 
+    return -1;
+  if(*pte & PTE_W) return 0;
+  
+  // 没有写权限如果不是 COW 页，就代表出错了
+  if((*pte & PTE_COW) == 0)
+    return -1;
+
+
+  // 2. 添加新的映射
+
+    uint64 pa = PTE2PA(*pte);
+    void *newPa = kalloc();
+    if(newPa == 0) {
+      printf("handleCOWfault kalloc out of memory \n");
+      return -1;
+    }
+
+    //没有只读标记，要恢复写权限
+    //if((*pte & PTE_ONLYREAD)==0)
+    //{
+    *pte = (PTE_FLAGS(*pte) & ~PTE_COW) | PTE_W | PA2PTE(newPa);
+    //}
+    memmove((char*)newPa, (char*)pa, PGSIZE);
+    // 3.减少 pa 映射
+    kfree((void*)pa);
+    return 0;
+
+
 }
 
 //
