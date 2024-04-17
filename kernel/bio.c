@@ -147,10 +147,11 @@ bget(uint dev, uint blockno)
   if(replace_buf)
   {
     int ridx=hash(replace_buf->dev,replace_buf->blockno);
+    //********由于没有关中断
     //********在全局中找到一个空闲块后，要对其加锁处理之间有一段时间，
-    //********这个时间可能先被其他cpu获取并处理了这个空闲块，即空闲块可能不存在了，
+    //********这个时间可能先被其他线程获取这个空闲块的桶的锁并处理，即空闲块可能不存在了，
     //********再获取空闲块的锁后要再次判断空闲块是否已经被使用
-    
+
     //获取要替换的空闲块所在桶的锁
     acquire(&hashtable[ridx].lock);
     if(replace_buf->refcnt != 0)  // be used in another bucket's local find between finded and acquire
