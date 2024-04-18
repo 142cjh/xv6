@@ -254,6 +254,7 @@ iget(uint dev, uint inum)
       release(&icache.lock);
       return ip;
     }
+    //记录空槽
     if(empty == 0 && ip->ref == 0)    // Remember empty slot.
       empty = ip;
   }
@@ -374,30 +375,61 @@ iunlockput(struct inode *ip)
 
 // Return the disk block address of the nth block in inode ip.
 // If there is no such block, bmap allocates one.
+//bmap返回inode的第n个数据块的磁盘地址
+//bmap一层映射调用一次bread（）返回磁盘块号，
+//bmap两层映射调用两次bread（）返回磁盘块号
 static uint
 bmap(struct inode *ip, uint bn)
 {
   uint addr, *a;
   struct buf *bp;
 
+  //直接获得磁盘块
   if(bn < NDIRECT){
-    if((addr = ip->addrs[bn]) == 0)
+    if((addr = ip->addrs[bn]) == 0)//直接获得磁盘号
       ip->addrs[bn] = addr = balloc(ip->dev);
     return addr;
   }
   bn -= NDIRECT;
 
+  //间接映射：分为一层映射和两层映射
   if(bn < NINDIRECT){
-    // Load indirect block, allocating if necessary.
-    if((addr = ip->addrs[NDIRECT]) == 0)
+  //一层映射
+  if(bn < ONEINDIRECT) {
+      //判断间接索引盘号是否存在
+      // Load indirect block, allocating if necessary.
+      if((addr = ip->addrs[NDIRECT]) == 0)
+      //间接索引磁盘块号不存在，申请分配磁盘块
       ip->addrs[NDIRECT] = addr = balloc(ip->dev);
-    bp = bread(ip->dev, addr);
-    a = (uint*)bp->data;
-    if((addr = a[bn]) == 0){
-      a[bn] = addr = balloc(ip->dev);
-      log_write(bp);
+      //获取间接索引盘第一个磁盘块
+      bp = bread(ip->dev, addr);
+      //获取磁盘块的数据
+      a = (uint*)bp->data;
+      //数据块不存在
+      if((addr = a[bn]) == 0){
+        //申请新的磁盘块
+        a[bn] = addr = balloc(ip->dev);
+        log_write(bp);
+      }
+      brelse(bp);
+      return addr;
     }
-    brelse(bp);
+  // 如果是两次映射
+  //判断间接表是否存在,不存在间接表,分配
+  bn -= ONEINDIRECT;
+  if((addr = ip->addrs[NDIRECT + 1]) == 0)
+    ip->addrs[NDIRECT + 1] = addr = balloc(ip->dev);
+  // 两次 bread
+  for(int i = 0, bno = bn / ONEINDIRECT; i < 2; ++ i) {
+      bp = bread(ip->dev, addr);
+      a = (uint*)bp->data;
+      if((addr = a[bno]) == 0) {
+        a[bno] = addr = balloc(ip->dev);
+        log_write(bp);
+      }
+      brelse(bp);
+      bno = bn % ONEINDIRECT;
+    }
     return addr;
   }
 
@@ -406,6 +438,7 @@ bmap(struct inode *ip, uint bn)
 
 // Truncate inode (discard contents).
 // Caller must hold ip->lock.
+//回收一个inode的所有数据块
 void
 itrunc(struct inode *ip)
 {
@@ -413,6 +446,7 @@ itrunc(struct inode *ip)
   struct buf *bp;
   uint *a;
 
+  //直接映射
   for(i = 0; i < NDIRECT; i++){
     if(ip->addrs[i]){
       bfree(ip->dev, ip->addrs[i]);
@@ -420,16 +454,36 @@ itrunc(struct inode *ip)
     }
   }
 
+  //一层映射
   if(ip->addrs[NDIRECT]){
     bp = bread(ip->dev, ip->addrs[NDIRECT]);
     a = (uint*)bp->data;
-    for(j = 0; j < NINDIRECT; j++){
+    for(j = 0; j < ONEINDIRECT; j++){
       if(a[j])
         bfree(ip->dev, a[j]);
     }
     brelse(bp);
     bfree(ip->dev, ip->addrs[NDIRECT]);
     ip->addrs[NDIRECT] = 0;
+  }
+
+  //二层映射
+  if(ip->addrs[NDIRECT + 1]){
+    bp = bread(ip->dev, ip->addrs[NDIRECT + 1]);
+    uint *a = (uint*)bp->data;
+    for(int i = 0;i < ONEINDIRECT; ++ i)
+      if(a[i]) {
+        struct buf *bp_two = bread(ip->dev, a[i]);
+        uint *b = (uint*)bp_two->data;
+        for(j = 0;j < ONEINDIRECT; ++ j)
+          if(b[i])
+            bfree(ip->dev, b[j]);
+        brelse(bp_two);
+        bfree(ip->dev, a[i]);
+      }
+    brelse(bp);
+    bfree(ip->dev, ip->addrs[NDIRECT + 1]);
+    ip->addrs[NDIRECT + 1] = 0;
   }
 
   ip->size = 0;

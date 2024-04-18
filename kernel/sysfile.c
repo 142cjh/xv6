@@ -16,6 +16,44 @@
 #include "file.h"
 #include "fcntl.h"
 
+static struct inode* create(char *path,short type,short major,short minor);
+
+//软连接：创建一个文件，文件中的inode中存文件路径
+int symlink(char *target,char *path)
+{
+  begin_op();
+  //创建文件,模式为T_SYMLINK
+  struct inode *ip=create(path,T_SYMLINK,0,0);
+  if(ip==0)
+  {
+    end_op();
+    return -1;
+  }
+  int n=strlen(target);
+  //将数据(即文件路径)写入inode
+  //写入失败
+  if(writei(ip,0,(uint64)target,0,n)!=n)
+  {
+    //释放对inode的锁及所占用的内存
+    iunlockput(ip);
+    end_op();
+    return -1;
+  }
+  iunlockput(ip);
+  end_op();
+  return 0;
+}
+
+uint64 sys_symlink(void)
+{
+  char target[MAXPATH],path[MAXPATH];
+  if(argstr(0,target,MAXPATH)<0||argstr(1,path,MAXPATH)<0)
+  {
+    return -1;
+  }
+  return symlink(target,path);
+}
+
 // Fetch the nth word-sized system call argument as a file descriptor
 // and return both the descriptor and the corresponding struct file.
 static int
@@ -297,31 +335,61 @@ sys_open(void)
 
   begin_op();
 
+  //模式为创建文件
   if(omode & O_CREATE){
     ip = create(path, T_FILE, 0, 0);
     if(ip == 0){
       end_op();
       return -1;
     }
-  } else {
-    if((ip = namei(path)) == 0){
-      end_op();
-      return -1;
-    }
-    ilock(ip);
-    if(ip->type == T_DIR && omode != O_RDONLY){
+  }
+  //文件已经存在 
+  else {
+      int depth=0;
+      //进行循环，判断是否连续为软连接
+      for(;depth<10;++depth)
+      {
+        //通过文件名返回inode
+        if((ip=namei(path))==0)
+        {
+          end_op();
+          return -1;
+        }
+        ilock(ip);
+        //inode为目录且模式不是只读
+        if(ip->type==T_DIR&&omode!=O_RDONLY)
+        {
+          iunlockput(ip);
+          end_op();
+          return -1;
+        }
+        //inode类型是否为软连接,若是且模式不是O_NOFOLLOW，继续循环
+        //若是且模式是O_NOFOLLOW，读取其中的文件目录
+        if(ip->type==T_SYMLINK&&(omode & O_NOFOLLOW)==0)
+        {
+          if(readi(ip,0,(uint64)path,0,MAXPATH)<0)
+          {
+            iunlockput(ip);
+            end_op();
+            return -1;
+          }
+        }
+        else
+        {
+          break;
+        }
+      
       iunlockput(ip);
+      }
+    if(depth==10)
+    {
       end_op();
       return -1;
     }
   }
+  
 
-  if(ip->type == T_DEVICE && (ip->major < 0 || ip->major >= NDEV)){
-    iunlockput(ip);
-    end_op();
-    return -1;
-  }
-
+  //分配文件结构体和文件描述符
   if((f = filealloc()) == 0 || (fd = fdalloc(f)) < 0){
     if(f)
       fileclose(f);
@@ -330,6 +398,7 @@ sys_open(void)
     return -1;
   }
 
+  //分配文件结构体信息
   if(ip->type == T_DEVICE){
     f->type = FD_DEVICE;
     f->major = ip->major;
