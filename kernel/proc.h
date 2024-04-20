@@ -82,6 +82,21 @@ struct trapframe {
 
 enum procstate { UNUSED, SLEEPING, RUNNABLE, RUNNING, ZOMBIE };
 
+#define NVMA 16
+#define VMA_START (MAXVA / 2)
+struct vma{
+  uint64 start;
+  uint64 end;
+  uint64 length; //长度为0时代表未使用
+  uint64 off;
+  int permission;
+  int flags;    //MAP_SHARED MAP_PRIVATE（是否要写回）
+  struct file *file;
+  struct vma *next;
+
+  struct spinlock lock;
+};
+
 // Per-process state
 struct proc {
   struct spinlock lock;
@@ -102,5 +117,6 @@ struct proc {
   struct context context;      // swtch() here to run process
   struct file *ofile[NOFILE];  // Open files
   struct inode *cwd;           // Current directory
+  struct vma *vma;             //
   char name[16];               // Process name (debugging)
 };
