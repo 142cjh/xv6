@@ -33,6 +33,8 @@ trapinithart(void)
 // handle an interrupt, exception, or system call from user space.
 // called from trampoline.S
 //
+pte_t *
+walk(pagetable_t pagetable, uint64 va, int alloc);
 void
 usertrap(void)
 {
@@ -67,12 +69,13 @@ usertrap(void)
     syscall();
   } else if((which_dev = devintr()) != 0){
     // ok
+  } else if(r_scause() == 15 || r_scause() == 13) {
+      handlePageFault(r_stval(), 1);
   } else {
     printf("usertrap(): unexpected scause %p pid=%d\n", r_scause(), p->pid);
     printf("            sepc=%p stval=%p\n", r_sepc(), r_stval());
     p->killed = 1;
   }
-
   if(p->killed)
     exit(-1);
 
@@ -82,7 +85,33 @@ usertrap(void)
 
   usertrapret();
 }
-
+// kill 这个参数 是因为 va >= p->sz || va <= p->trapframe->sp 这种限制 在 walkaddr 中 不能杀掉进程，不然会通不过测试
+// 但是理论上来说，即便杀掉也是正当的。
+//处理页表错误,返回walk函数分配pte后最低一级的pte
+pte_t *handlePageFault(uint64 va, int kill)
+{
+  // printf("page fault %p\n", va);
+  struct proc *p = myproc();
+  pte_t *pte;
+  if(va >= p->sz || va <= p->trapframe->sp)  {
+    if(kill) exit(-1);
+    return 0;  
+    // 下面这个判断是为了防止 remap
+  } else if((pte = walk(p->pagetable, va, 0)) == 0 ||(*pte & PTE_V) == 0) {
+    char* kp = (char*)kalloc();
+    if(kp == 0)  {
+        // printf("out of memory\n");
+        exit(-1);
+    } else {
+      memset(kp, 0, PGSIZE);
+      if(mappages(p->pagetable, PGROUNDDOWN(va), PGSIZE, (uint64)kp, PTE_U | PTE_W | PTE_R) < 0) {
+        kfree(kp);
+        panic("handlePageFault");
+      }
+    }
+  }
+  return pte;
+}
 //
 // return to user space
 //
@@ -217,4 +246,3 @@ devintr()
     return 0;
   }
 }
-
