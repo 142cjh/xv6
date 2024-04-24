@@ -310,19 +310,30 @@ uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
   uint flags;
   char *mem;
 
+  //walk递归的遍历三级页表，返回最低的pte
   for(i = 0; i < sz; i += PGSIZE){
+    //若分配的父进程就是懒分配的页面，则pte为0
     if((pte = walk(old, i, 0)) == 0)
       //改：
       continue;
     if((*pte & PTE_V) == 0)
       //改：
       continue;
+
+    //获得pte对应的物理地址和标志位
     pa = PTE2PA(*pte);
     flags = PTE_FLAGS(*pte);
+
+    //分配内存失败
     if((mem = kalloc()) == 0)
       goto err;
+
+    //将父进程对应的物理页面复制到新的页面中
     memmove(mem, (char*)pa, PGSIZE);
+
+    //在新的页表中建立映射关系
     if(mappages(new, i, PGSIZE, (uint64)mem, flags) != 0){
+      //建立映射失败，则释放所有已经分配的内存
       kfree(mem);
       goto err;
     }
@@ -330,6 +341,7 @@ uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
   return 0;
 
  err:
+ //解除映射关系，释放已经分配的内存
   uvmunmap(new, 0, i / PGSIZE, 1);
   return -1;
 }

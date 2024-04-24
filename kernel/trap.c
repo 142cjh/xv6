@@ -50,6 +50,7 @@ usertrap(void)
   struct proc *p = myproc();
   
   // save user program counter.
+  //保存当前用户程序计数器到当前进程的trapframe的epc指针中
   p->trapframe->epc = r_sepc();
   
   if(r_scause() == 8){
@@ -64,6 +65,7 @@ usertrap(void)
 
     // an interrupt will change sstatus &c registers,
     // so don't enable until done with those registers.
+    //打开中断
     intr_on();
 
     syscall();
