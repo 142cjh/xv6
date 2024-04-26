@@ -132,3 +132,20 @@ printfinit(void)
   initlock(&pr.lock, "pr");
   pr.locking = 1;
 }
+
+//实现打印调用栈
+void backtrace()
+{
+  //获取当前的栈帧的寄存器
+  uint64 fp=r_fp();
+  //到达栈底？
+  while(fp!=PGROUNDUP(fp))
+  {
+    //返回的地址是fp-8
+    uint64 ra=*(uint64*)(fp-8);
+    printf("%p\n",ra);
+    //下一次的fp地址是fp-16
+    fp=*(uint64*)(fp-16);
+  }
+}
+

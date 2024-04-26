@@ -7,6 +7,7 @@
 #include "spinlock.h"
 #include "proc.h"
 
+
 uint64
 sys_exit(void)
 {
@@ -58,6 +59,8 @@ sys_sleep(void)
   int n;
   uint ticks0;
 
+
+
   if(argint(0, &n) < 0)
     return -1;
   acquire(&tickslock);
@@ -70,6 +73,8 @@ sys_sleep(void)
     sleep(&ticks, &tickslock);
   }
   release(&tickslock);
+    //打印当前调用栈
+  backtrace();
   return 0;
 }
 
@@ -95,3 +100,30 @@ sys_uptime(void)
   release(&tickslock);
   return xticks;
 }
+
+//时钟中断时，处理设置中断状态的属性
+uint64 sys_sigalarm(void)
+{
+  //时钟周期
+  int n;
+  //时钟回调处理函数
+  uint64 fn;
+  if(argint(0,&n)<0)
+  {
+    return -1;
+  }
+  if(argaddr(1,&fn)<0)
+  {
+    return -1;
+  }
+
+  return sigalarm(n,(void(*)())(fn));
+}
+
+//恢复到中断前的状态
+uint64 sys_sigreturn(void)
+{
+  return sigreturn();
+}
+
+
