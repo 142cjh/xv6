@@ -158,9 +158,18 @@ void            uartputc_sync(int);
 int             uartgetc(void);
 
 // vm.c
-void            kvminit(void);
+//begin 新增
+int             uvmcopy_not_physical(pagetable_t, pagetable_t, uint64, uint64);//实验3.将用户页表拷贝到内核页表中           
+void            kvmmap_pagetable(pagetable_t kernel_pagetable, 
+                uint64 va, uint64 pa, uint64 sz, int perm);//为该进程的内核页表分配映射
+void            kernel_pagetable_free(pagetable_t);//释放该进程的内核页表物理空间以及映射
+void            kvm_init_pagetable(pagetable_t*);//初始化进程的内核页表,并添加一些基本的固定映射
+void            kvminithart_pagetable(pagetable_t);//切换当前的进程的内核页表
+void            vmprint(pagetable_t);//打印pte页表基地址
+//end
+void            kvminit(void);//改动
 void            kvminithart(void);
-uint64          kvmpa(uint64);
+uint64          kvmpa(pagetable_t, uint64);//改动
 void            kvmmap(uint64, uint64, uint64, int);
 int             mappages(pagetable_t, uint64, uint64, uint64, int);
 pagetable_t     uvmcreate(void);
