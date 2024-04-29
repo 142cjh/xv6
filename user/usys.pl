@@ -36,3 +36,6 @@ entry("getpid");
 entry("sbrk");
 entry("sleep");
 entry("uptime");
+#跳板函数使用ecall指令，调用到内核态
+entry("trace");
+entry("sysinfo");

@@ -1,5 +1,7 @@
 struct stat;
 struct rtcdate;
+//声明sysinfo结构，给用户态使用，输出此结构体的空闲内存和已使用的进程数量
+struct sysinfo;
 
 // system calls
 int fork(void);
@@ -23,6 +25,11 @@ int getpid(void);
 char* sbrk(int);
 int sleep(int);
 int uptime(void);
+//用户态入口
+//系统调用的跳板函数
+int trace(int);
+int sysinfo(struct sysinfo *);
+
 
 // ulib.c
 int stat(const char*, struct stat*);

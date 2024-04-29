@@ -103,4 +103,8 @@ struct proc {
   struct file *ofile[NOFILE];  // Open files
   struct inode *cwd;           // Current directory
   char name[16];               // Process name (debugging)
+
+  //添加进程的sys_trace信息
+  //追踪进程的system call的mask
+  uint64 syscall_trace;
 };

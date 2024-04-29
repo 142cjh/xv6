@@ -6,6 +6,7 @@
 #include "memlayout.h"
 #include "spinlock.h"
 #include "proc.h"
+#include "sysinfo.h"
 
 uint64
 sys_exit(void)
@@ -94,4 +95,45 @@ sys_uptime(void)
   xticks = ticks;
   release(&tickslock);
   return xticks;
+}
+
+//系统调用内核执行的真正函数
+uint64 sys_trace(void)
+{
+  int mask;
+
+  //读取进程的trapfame的a0，获得mask参数
+  if(argint(0,&mask)<0)
+  {
+    return -1;
+  }
+
+  //添加  
+  myproc()->syscall_trace=mask;
+  return 0;
+}
+
+//添加系统调用的真正函数
+uint64 sys_sysinfo(void)
+{
+  //从用户态读入一个指针，作为存放sysinfo结构的缓冲区
+  //这里返回p->trapframe->a0作为存放sysinfo结构的指针
+  //&addr=p->trapframe->a0
+  uint64 addr;
+  if(argaddr(0,&addr)<0)
+  {
+    return -1;
+  }
+
+  //计算空闲内存和已使用的进程数，写入结构体中
+  struct sysinfo sinfo;
+  sinfo.freemem = count_free_mem(); // kalloc.c
+  sinfo.nproc = count_process(); // proc.c
+
+  // 使用 copyout，结合当前进程的页表，获得进程传进来的指针（逻辑地址）对应的物理地址
+  // 然后将 &sinfo 中的数据复制到该指针所指位置，供用户进程使用
+  //copyout将当前内核态中的sinfo结合进程的页表拷贝到用户addr中
+  if(copyout(myproc()->pagetable, addr, (char *)&sinfo, sizeof(sinfo)) < 0)
+    return -1;
+  return 0;
 }

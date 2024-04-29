@@ -127,6 +127,10 @@ found:
   p->context.ra = (uint64)forkret;
   p->context.sp = p->kstack + PGSIZE;
 
+  //对syscall_trace添加默认值
+  p->syscall_trace=0;
+
+
   return p;
 }
 
@@ -290,6 +294,9 @@ fork(void)
   np->cwd = idup(p->cwd);
 
   safestrcpy(np->name, p->name, sizeof(p->name));
+
+  //修改fork函数，子进程继承父进程的所有进程变量
+  np->syscall_trace=p->syscall_trace;
 
   pid = np->pid;
 
@@ -692,4 +699,22 @@ procdump(void)
     printf("%d %s %s", p->pid, state, p->name);
     printf("\n");
   }
+}
+
+//计算已使用的进程数
+uint64 
+count_process(void)
+{
+  uint64 cnt=0;
+  //proc[NPROC]:最大进程数量
+  for(struct proc *p=proc;p<&proc[NPROC];p++)
+  {
+    //不需要锁进程proc结构，这里只读
+    //不是unused，这个进程就已经分配了
+    if(p->state!=UNUSED)
+    {
+      cnt++;
+    }
+  }
+  return cnt;
 }
